@@ -5,6 +5,10 @@ class macaron:
     def __init__(self):
         self.color = None  # `play_othello(macaron())` の形式に対応するため
 
+    def face(self):
+        """ AI の顔文字を返す """
+        return "🍬"
+
     def set_color(self, color):
         """ play_othello() の中で、AI の色（黒 or 白）をセットする """
         self.color = color
@@ -12,8 +16,11 @@ class macaron:
     def get_move(self, board):
         """ 最適な手を選ぶ（ミニマックス法 + アルファベータ枝刈り） """
         valid_moves = self.get_valid_moves(board)
+
         if not valid_moves:
-            return None  # 合法手がなければパス
+            # ルール上パス不可 → ランダムに空いているマスを選ぶ
+            empty_cells = [(r, c) for r in range(8) for c in range(8) if board[r][c] == 0]
+            return random.choice(empty_cells)
 
         best_move = None
         best_score = float('-inf')
