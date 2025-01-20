@@ -3,14 +3,14 @@ import copy
 
 class macaron:
     def __init__(self):
-        self.color = None  # `play_othello(macaron())` の形式に対応するため
+        self.color = None  # 初期値は None にする
 
     def set_color(self, color):
-        """ play_othello() の中で、AIの色（黒 or 白）をセットする """
+        """ play_othello() の中で、AI の色（黒 or 白）をセットする """
         self.color = color
 
     def get_move(self, board):
-        """ AI の手を決定する（簡単なランダムロジック）"""
+        """ AI の手を決定する（ランダム）"""
         valid_moves = self.get_valid_moves(board)
         return random.choice(valid_moves) if valid_moves else None  # ランダムな合法手を選択
 
@@ -28,4 +28,3 @@ class macaron:
         if board[row][col] != 0:
             return False
         return True  # シンプルなロジック（強化可能）
-
