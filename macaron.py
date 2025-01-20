@@ -3,7 +3,7 @@ import copy
 
 class macaron:
     def __init__(self):
-        self.color = None  # `play_othello(macaron())` の形式に対応するため
+        self.color = None  # 初期値を None にする
 
     def face(self):
         """ AI の顔文字を返す """
