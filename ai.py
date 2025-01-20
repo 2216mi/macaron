@@ -1,154 +1,175 @@
+import math
 import random
-import copy
 
 BLACK = 1
 WHITE = 2
 
-class macaronAI:
-    def face(self):
-        """ AI の顔文字を返す """
-        return "🍬"
+board = [
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 1, 2, 0, 0],
+    [0, 0, 2, 1, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+]
 
-    def place(self, board, stone):
-        """ AI が最適な手を選ぶ """
-        empty_cells = sum(row.count(0) for row in board)
+def can_place_x_y(board, stone, x, y):
+    if board[y][x] != 0:
+        return False  # 既に石がある場合は置けない
 
-        if empty_cells <= 10:
-            # 終盤はミニマックス法で最適な手を選ぶ
-            return self.best_move_minimax(board, stone, depth=4)
+    opponent = 3 - stone  # 相手の石 (1なら2、2なら1)
+    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 
-        # 通常の手選び（リスク管理付き）
-        return self.best_place_with_risk_management(board, stone)
+    for dx, dy in directions:
+        nx, ny = x + dx, y + dy
+        found_opponent = False
 
-    def best_place_with_risk_management(self, board, stone):
-        """ リスク管理付きの最適な手を選ぶ """
-        corners = [(0, 0), (0, 5), (5, 0), (5, 5)]
-        x_squares = [(0, 1), (1, 0), (1, 1), (0, 4), (1, 5), (1, 4),
-                     (4, 0), (5, 1), (4, 1), (4, 5), (5, 4), (4, 4)]
+        while 0 <= nx < len(board[0]) and 0 <= ny < len(board) and board[ny][nx] == opponent:
+            nx += dx
+            ny += dy
+            found_opponent = True
 
-        best_score = -float('inf')
-        best_move = None
+        if found_opponent and 0 <= nx < len(board[0]) and 0 <= ny < len(board) and board[ny][nx] == stone:
+            return True  # 石を置ける条件を満たす
 
-        for y in range(len(board)):
-            for x in range(len(board[0])):
-                if not self.can_place_x_y(board, stone, x, y):
-                    continue
+    return False
 
-                if (x, y) in corners:
-                    return (x, y)  # 角は最優先
+def can_place(board, stone):
+    for y in range(len(board)):
+        for x in range(len(board[0])):
+            if can_place_x_y(board, stone, x, y):
+                return True
+    return False
 
-                score = self.count_flippable_stones(board, stone, x, y)
+def simulate_board(board, stone, x, y):
+    new_board = [row[:] for row in board]
+    opponent = 3 - stone
+    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 
-                if (x, y) in x_squares:
-                    score -= 100  # X-square は避ける
+    new_board[y][x] = stone
+    for dx, dy in directions:
+        nx, ny = x + dx, y + dy
+        flip_positions = []
 
+        while 0 <= nx < len(board[0]) and 0 <= ny < len(board):
+            if new_board[ny][nx] == opponent:
+                flip_positions.append((nx, ny))
+            elif new_board[ny][nx] == stone:
+                for fx, fy in flip_positions:
+                    new_board[fy][fx] = stone
+                break
+            else:
+                break
+
+            nx += dx
+            ny += dy
+
+    return new_board
+
+SCORE_MAP = [
+    [100, -20, 10, 10, -20, 100],
+    [-20, -50,  1,  1, -50, -20],
+    [ 10,   1,  5,  5,   1,  10],
+    [ 10,   1,  5,  5,   1,  10],
+    [-20, -50,  1,  1, -50, -20],
+    [100, -20, 10, 10, -20, 100],
+]
+
+def evaluate_board_by_position(board, stone):
+    score = 0
+    for y in range(len(board)):
+        for x in range(len(board[0])):
+            if board[y][x] == stone:
+                score += SCORE_MAP[y][x]
+            elif board[y][x] == (3 - stone):
+                score -= SCORE_MAP[y][x]
+    return score
+
+def count_stable_discs(board, stone):
+    stable_count = 0
+    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+
+    for y in range(len(board)):
+        for x in range(len(board[0])):
+            if board[y][x] == stone:
+                is_stable = True
+                for dx, dy in directions:
+                    nx, ny = x + dx, y + dy
+                    while 0 <= nx < len(board[0]) and 0 <= ny < len(board):
+                        if board[ny][nx] != stone:
+                            is_stable = False
+                            break
+                        nx += dx
+                        ny += dy
+                    if not is_stable:
+                        break
+                if is_stable:
+                    stable_count += 1
+    return stable_count
+
+def calculate_mobility(board, stone):
+    mobility = 0
+    for y in range(len(board)):
+        for x in range(len(board[0])):
+            if can_place_x_y(board, stone, x, y):
+                mobility += 1
+    return mobility
+
+def count_stones(board, stone):
+    return sum(row.count(stone) for row in board)
+
+def evaluate_board(board, stone, game_stage):
+    if game_stage == "early":
+        return (
+            evaluate_board_by_position(board, stone) * 10 +
+            calculate_mobility(board, stone) * 5
+        )
+    elif game_stage == "late":
+        return (
+            count_stable_discs(board, stone) * 10 +
+            count_stones(board, stone) * 5
+        )
+
+def evaluate_future(board, stone, depth, alpha=-math.inf, beta=math.inf):
+    if depth == 0:
+        return evaluate_board(board, stone, "late")
+
+    opponent = 3 - stone
+    for y in range(len(board)):
+        for x in range(len(board[0])):
+            if can_place_x_y(board, stone, x, y):
+                new_board = simulate_board(board, stone, x, y)
+                score = -evaluate_future(new_board, opponent, depth - 1, -beta, -alpha)
+                if score > alpha:
+                    alpha = score
+                if alpha >= beta:
+                    return alpha
+    return alpha
+
+def improved_place(board, stone):
+    best_score = -math.inf
+    best_move = None
+
+    for y in range(len(board)):
+        for x in range(len(board[0])):
+            if can_place_x_y(board, stone, x, y):
+                new_board = simulate_board(board, stone, x, y)
+                score = -evaluate_future(new_board, 3 - stone, depth=5)
                 if score > best_score:
                     best_score = score
                     best_move = (x, y)
 
-        return best_move
+    return best_move
 
-    def best_move_minimax(self, board, stone, depth=4):
-        """ ミニマックス法 + アルファベータ枝刈りで最適な手を選ぶ """
-        opponent = 3 - stone
-        best_move = None
-        best_score = -float('inf')
+class macaronAI:
+    def face(self):
+        return "🍬"
 
-        for y in range(len(board)):
-            for x in range(len(board[0])):
-                if self.can_place_x_y(board, stone, x, y):
-                    new_board = self.make_move(board, stone, x, y)
-                    eval = self.minimax(new_board, opponent, depth - 1, False, float('-inf'), float('inf'))
-                    if eval > best_score:
-                        best_score = eval
-                        best_move = (x, y)
+    def place(self, board, stone):
+        if not can_place(board, stone):
+            print("No valid moves available. Passing turn.")
+            return
 
-        return best_move
+        x, y = improved_place(board, stone)
+        return x, y
 
-    def minimax(self, board, stone, depth, maximizing, alpha, beta):
-        """ ミニマックス法 + アルファベータ枝刈り """
-        opponent = 3 - stone
-
-        if depth == 0 or not self.can_place(board, stone) and not self.can_place(board, opponent):
-            return self.evaluate_board(board, stone)
-
-        if maximizing:
-            max_eval = -float('inf')
-            for y in range(len(board)):
-                for x in range(len(board[0])):
-                    if self.can_place_x_y(board, stone, x, y):
-                        new_board = self.make_move(board, stone, x, y)
-                        eval = self.minimax(new_board, opponent, depth - 1, False, alpha, beta)
-                        max_eval = max(max_eval, eval)
-                        alpha = max(alpha, eval)
-                        if beta <= alpha:
-                            break
-            return max_eval
-        else:
-            min_eval = float('inf')
-            for y in range(len(board)):
-                for x in range(len(board[0])):
-                    if self.can_place_x_y(board, opponent, x, y):
-                        new_board = self.make_move(board, opponent, x, y)
-                        eval = self.minimax(new_board, stone, depth - 1, True, alpha, beta)
-                        min_eval = min(min_eval, eval)
-                        beta = min(beta, eval)
-                        if beta <= alpha:
-                            break
-            return min_eval
-
-    def count_flippable_stones(self, board, stone, x, y):
-        """ 置いた時にひっくり返せる石の数を計算 """
-        if board[y][x] != 0:
-            return 0
-
-        opponent = 3 - stone
-        directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-        total_flipped = 0
-
-        for dx, dy in directions:
-            nx, ny = x + dx, y + dy
-            flipped = 0
-
-            while 0 <= nx < len(board[0]) and 0 <= ny < len(board) and board[ny][nx] == opponent:
-                flipped += 1
-                nx += dx
-                ny += dy
-
-            if 0 <= nx < len(board[0]) and 0 <= ny < len(board) and board[ny][nx] == stone:
-                total_flipped += flipped
-
-        return total_flipped
-
-    def can_place_x_y(self, board, stone, x, y):
-        """ (x, y) に石を置けるかチェック """
-        if board[y][x] != 0:
-            return False
-
-        opponent = 3 - stone
-        directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-
-        for dx, dy in directions:
-            nx, ny = x + dx, y + dy
-            found_opponent = False
-
-            while 0 <= nx < len(board[0]) and 0 <= ny < len(board) and board[ny][nx] == opponent:
-                found_opponent = True
-                nx += dx
-                ny += dy
-
-            if found_opponent and 0 <= nx < len(board[0]) and 0 <= ny < len(board) and board[ny][nx] == stone:
-                return True
-
-        return False
-
-    def make_move(self, board, stone, x, y):
-        """ 石を置く """
-        new_board = [row[:] for row in board]
-        new_board[y][x] = stone
-        return new_board
-
-    def evaluate_board(self, board, stone):
-        """ 盤面評価 """
-        score = sum(row.count(stone) - row.count(3 - stone) for row in board)
-        return score
