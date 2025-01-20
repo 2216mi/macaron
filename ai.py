@@ -173,3 +173,12 @@ class macaronAI:
         x, y = improved_place(board, stone)
         return x, y
 
+    def can_place(self, board, stone):
+        """ 石を置ける場所があるか判定（修正済み）"""
+        for y in range(len(board)):
+            for x in range(len(board[0])):
+                if can_place_x_y(board, stone, x, y):
+                    return True
+        return False
+
+
