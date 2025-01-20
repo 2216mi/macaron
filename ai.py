@@ -32,7 +32,6 @@ class macaronAI:
             (1, -1),  (1, 0),  (1, 1)
         ]
 
-        can_put = False
         for dx, dy in directions:
             nx = x + dx
             ny = y + dy
@@ -51,15 +50,15 @@ class macaronAI:
             if has_opponent:
                 if 0 <= nx < len(board[0]) and 0 <= ny < len(board):
                     if board[ny][nx] == stone:
-                        can_put = True
-                        break
+                        return True
 
-        return can_put
+        return False
 
     # -----------------------------------------
     # 盤面のどこかに石を置ける場所があるか判定
     # -----------------------------------------
     def can_place(self, board, stone):
+        """stone を置ける場所が1つでもあるか"""
         for y in range(len(board)):
             for x in range(len(board[0])):
                 if self.can_place_x_y(board, stone, x, y):
@@ -139,13 +138,12 @@ class macaronAI:
         # パス判定（置ける場所がない）
         if not moves:
             # 相手に手番を渡して、深さを1減らす
-            # ただし、パス続きになった場合は同じ評価で終了
             return self.minimax(board, 3 - stone, depth - 1, alpha, beta, not maximizing)
 
         if maximizing:
             value = -math.inf
-            for (x, y) in moves:
-                new_board = self.simulate_board(board, stone, x, y)
+            for (mx, my) in moves:
+                new_board = self.simulate_board(board, stone, mx, my)
                 # 相手ターンを評価
                 score = self.minimax(new_board, 3 - stone, depth - 1, alpha, beta, False)
                 value = max(value, score)
@@ -155,8 +153,8 @@ class macaronAI:
             return value
         else:
             value = math.inf
-            for (x, y) in moves:
-                new_board = self.simulate_board(board, stone, x, y)
+            for (mx, my) in moves:
+                new_board = self.simulate_board(board, stone, mx, my)
                 # 相手ターンを評価
                 score = self.minimax(new_board, 3 - stone, depth - 1, alpha, beta, True)
                 value = min(value, score)
@@ -177,26 +175,25 @@ class macaronAI:
 
         best_score = -math.inf
         best_move = None
-        depth = 3  # 探索深さ(適宜変更)
+        depth = 3  # 探索深さ(例)
 
         for y in range(len(board)):
             for x in range(len(board[0])):
                 if self.can_place_x_y(board, stone, x, y):
                     # その手を打った場合の盤面
                     new_board = self.simulate_board(board, stone, x, y)
-                    # 相手番として評価
+                    # minimax で相手番を評価
                     score = self.minimax(
-                        new_board,
-                        stone = 3 - stone,
-                        depth = depth - 1,
-                        alpha = -math.inf,
-                        beta  = math.inf,
-                        maximizing = False
+                        board=new_board,
+                        stone=3 - stone,
+                        depth=depth - 1,
+                        alpha=-math.inf,
+                        beta=math.inf,
+                        maximizing=False
                     )
                     if score > best_score:
                         best_score = score
                         best_move = (x, y)
 
         return best_move
-
 
