@@ -1,24 +1,27 @@
 import math
 import time
+import hashlib
 
 BLACK = 1
 WHITE = 2
 
 class macaronAI:
     def __init__(self):
-        # 反復深化の最大深度（必要に応じて調整）
-        self.MAX_DEPTH = 12
+        # 反復深化の最大深度
+        self.MAX_DEPTH = 7
         # 反復深化にかける最大思考時間 [秒]
         self.TIME_LIMIT = 5.0
+        # 置換表（探索済みの盤面を保存）
+        self.transposition_table = {}
 
     def face(self):
         return "🍬"
 
     # -----------------------------------------
-    # 盤面をコピーする便利関数
+    # 盤面をハッシュ化 (置換表用)
     # -----------------------------------------
-    def copy_board(self, board):
-        return [row[:] for row in board]
+    def hash_board(self, board):
+        return hashlib.md5(str(board).encode()).hexdigest()
 
     # -----------------------------------------
     # (x, y) に石を置けるか判定
@@ -27,7 +30,6 @@ class macaronAI:
         if board[y][x] != 0:
             return False
         opponent = 3 - stone
-
         directions = [
             (-1, -1), (-1, 0), (-1, 1),
             (0, -1),           (0, 1),
@@ -63,7 +65,7 @@ class macaronAI:
     # (x, y) に石を置いた盤面を返す
     # -----------------------------------------
     def simulate_board(self, board, stone, x, y):
-        new_board = self.copy_board(board)
+        new_board = [row[:] for row in board]
         new_board[y][x] = stone
         opponent = 3 - stone
 
@@ -75,13 +77,12 @@ class macaronAI:
         for dx, dy in directions:
             nx, ny = x + dx, y + dy
             flip_positions = []
-            while 0 <= nx < len(board[0]) and 0 <= ny < len(board):
+            while 0 <= nx < len(new_board[0]) and 0 <= ny < len(new_board):
                 if new_board[ny][nx] == opponent:
                     flip_positions.append((nx, ny))
                     nx += dx
                     ny += dy
                 elif new_board[ny][nx] == stone:
-                    # 挟んだ相手の石をすべてひっくり返す
                     for fx, fy in flip_positions:
                         new_board[fy][fx] = stone
                     break
@@ -90,10 +91,8 @@ class macaronAI:
         return new_board
 
     # -----------------------------------------
-    # 評価の補助関数群
+    # 評価関数 (X-square, C-square を考慮)
     # -----------------------------------------
-
-    # 位置評価用マップ(6×6)
     POSITION_MAP = [
         [100, -20,  10,  10, -20, 100],
         [-20, -50,   1,   1, -50, -20],
@@ -103,71 +102,69 @@ class macaronAI:
         [100, -20,  10,  10, -20, 100],
     ]
 
-    def count_empty_cells(self, board):
-        """空きマス数"""
-        return sum(row.count(0) for row in board)
-
-    def get_position_score(self, board, stone):
-        """単純な位置スコア計算 (POSITION_MAP を使用)"""
+    def evaluate(self, board, stone):
         score = 0
-        opponent = 3 - stone
         for y in range(len(board)):
             for x in range(len(board[0])):
                 if board[y][x] == stone:
                     score += self.POSITION_MAP[y][x]
-                elif board[y][x] == opponent:
+                elif board[y][x] == (3 - stone):
                     score -= self.POSITION_MAP[y][x]
         return score
 
-    def get_mobility_score(self, board, stone):
-        """モビリティ(手数)の差 [自分 - 相手]"""
-        my_moves = 0
-        op_moves = 0
-        opponent = 3 - stone
+    # -----------------------------------------
+    # ネガスコア(negamax)によるαβ探索
+    # -----------------------------------------
+    def negamax(self, board, stone, depth, alpha, beta):
+        board_hash = self.hash_board(board)
+        if board_hash in self.transposition_table:
+            return self.transposition_table[board_hash]
+
+        if depth == 0 or not self.can_place(board, stone):
+            return self.evaluate(board, stone)
+
+        best_score = -math.inf
         for y in range(len(board)):
             for x in range(len(board[0])):
                 if self.can_place_x_y(board, stone, x, y):
-                    my_moves += 1
-                if self.can_place_x_y(board, opponent, x, y):
-                    op_moves += 1
-        return (my_moves - op_moves) * 5
+                    new_board = self.simulate_board(board, stone, x, y)
+                    score = -self.negamax(new_board, 3 - stone, depth - 1, -beta, -alpha)
+                    best_score = max(best_score, score)
+                    alpha = max(alpha, score)
+                    if alpha >= beta:
+                        break  # 枝刈り
+        self.transposition_table[board_hash] = best_score
+        return best_score
 
-    def get_stone_diff_score(self, board, stone):
-        """石数の差 [自分 - 相手]"""
-        my_stones = 0
-        op_stones = 0
-        opponent = 3 - stone
-        for row in board:
-            for cell in row:
-                if cell == stone:
-                    my_stones += 1
-                elif cell == opponent:
-                    op_stones += 1
-        return (my_stones - op_stones) * 2
+    # -----------------------------------------
+    # 反復深化
+    # -----------------------------------------
+    def iterative_deepening(self, board, stone):
+        best_move = None
+        start_time = time.time()
 
-    def get_stable_corners(self, board, stone):
-        """
-        コーナーにある自分の石を簡易的に安定石とみなす(1個につき+10)。
-        本来はもっと複雑な安定石判定が必要だが、例として簡単に実装。
-        """
-        corners = [(0,0), (0,5), (5,0), (5,5)]
-        stable = 0
-        for (cx, cy) in corners:
-            if board[cy][cx] == stone:
-                stable += 10
-        return stable
+        for depth in range(1, self.MAX_DEPTH + 1):
+            if time.time() - start_time > self.TIME_LIMIT:
+                break
 
-    def evaluate(self, board, stone):
-        """
-        空きマス数に応じて評価のウェイトを変える。
-        [序盤] 位置評価 + モビリティ
-        [中盤] 位置評価 + モビリティ + コーナー安定石
-        [終盤] コーナー安定石 + 石数差
-        """
-        empty = self.count_empty_cells(board)
-        # 大まかに3段階に分ける
-        if empty > 20:
-            # 序盤
-            return self.get_position_score(board, stone) \
+            best_score = -math.inf
+            for y in range(len(board)):
+                for x in range(len(board[0])):
+                    if self.can_place_x_y(board, stone, x, y):
+                        new_board = self.simulate_board(board, stone, x, y)
+                        score = -self.negamax(new_board, 3 - stone, depth - 1, -math.inf, math.inf)
+                        if score > best_score:
+                            best_score = score
+                            best_move = (x, y)
 
+        return best_move
+
+    # -----------------------------------------
+    # 石を置く手を決定 (エントリーポイント)
+    # -----------------------------------------
+    def place(self, board, stone):
+        if not self.can_place(board, stone):
+            print("No valid moves available. Passing turn.")
+            return
+        return self.iterative_deepening(board, stone)
 
