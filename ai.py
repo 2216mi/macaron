@@ -3,15 +3,6 @@ import math
 BLACK = 1
 WHITE = 2
 
-SCORE_MAP = [
-    [100, -20,  10,  10, -20, 100],
-    [-20, -50,   1,   1, -50, -20],
-    [ 10,   1,   5,   5,   1,  10],
-    [ 10,   1,   5,   5,   1,  10],
-    [-20, -50,   1,   1, -50, -20],
-    [100, -20,  10,  10, -20, 100],
-]
-
 class macaronAI:
     def __init__(self):
         pass
@@ -19,13 +10,20 @@ class macaronAI:
     def face(self):
         return "🍬"
 
-    # ------------------------------------------------------
-    # 石が置けるかどうか判定するメソッド
-    # ------------------------------------------------------
+    # -----------------------------------------
+    # 盤面をコピーする便利関数
+    # -----------------------------------------
+    def copy_board(self, board):
+        return [row[:] for row in board]
+
+    # -----------------------------------------
+    # (x, y)に石を置けるか判定する
+    # -----------------------------------------
     def can_place_x_y(self, board, stone, x, y):
-        """(x, y) に stone を置けるかどうか判定"""
+        """(x, y) に stone を置けるかどうか"""
+        # 既に石がある
         if board[y][x] != 0:
-            return False  # 既に石がある場合
+            return False
 
         opponent = 3 - stone
         directions = [
@@ -34,39 +32,45 @@ class macaronAI:
             (1, -1),  (1, 0),  (1, 1)
         ]
 
-        # 8方向のどこかで相手の石をはさんで自分の石に到達できればOK
+        can_put = False
         for dx, dy in directions:
-            nx, ny = x + dx, y + dy
-            found_opponent = False
+            nx = x + dx
+            ny = y + dy
+            has_opponent = False
 
+            # 相手の石が連続するか探す
             while 0 <= nx < len(board[0]) and 0 <= ny < len(board):
                 if board[ny][nx] == opponent:
-                    found_opponent = True
+                    has_opponent = True
                     nx += dx
                     ny += dy
                 else:
                     break
 
-            if found_opponent and 0 <= nx < len(board[0]) and 0 <= ny < len(board):
-                if board[ny][nx] == stone:
-                    return True
+            # 一度でも相手の石を見つけ、最後に自分の石があるか
+            if has_opponent:
+                if 0 <= nx < len(board[0]) and 0 <= ny < len(board):
+                    if board[ny][nx] == stone:
+                        can_put = True
+                        break
 
-        return False
+        return can_put
 
+    # -----------------------------------------
+    # 盤面のどこかに石を置ける場所があるか判定
+    # -----------------------------------------
     def can_place(self, board, stone):
-        """盤上のどこかに石を置ける場所があるか判定"""
         for y in range(len(board)):
             for x in range(len(board[0])):
                 if self.can_place_x_y(board, stone, x, y):
                     return True
         return False
 
-    # ------------------------------------------------------
-    # 石を置いたときの盤面を返すメソッド
-    # ------------------------------------------------------
+    # -----------------------------------------
+    # (x, y) に石を置いたときの盤面を返す
+    # -----------------------------------------
     def simulate_board(self, board, stone, x, y):
-        """(x, y) に stone を置いてひっくり返したあとの新しい盤を返す"""
-        new_board = [row[:] for row in board]
+        new_board = self.copy_board(board)
         new_board[y][x] = stone
         opponent = 3 - stone
 
@@ -77,49 +81,53 @@ class macaronAI:
         ]
 
         for dx, dy in directions:
-            flip_positions = []
             nx, ny = x + dx, y + dy
-            while 0 <= nx < len(board[0]) and 0 <= ny < len(board):
+            flip_positions = []
+
+            while 0 <= nx < len(new_board[0]) and 0 <= ny < len(new_board):
                 if new_board[ny][nx] == opponent:
                     flip_positions.append((nx, ny))
+                    nx += dx
+                    ny += dy
                 elif new_board[ny][nx] == stone:
-                    # 挟んでいる相手の石をすべてひっくり返す
+                    # 挟んだ相手の石をすべてひっくり返す
                     for fx, fy in flip_positions:
                         new_board[fy][fx] = stone
                     break
                 else:
                     break
-                nx += dx
-                ny += dy
 
         return new_board
 
-    # ------------------------------------------------------
-    # 評価関数
-    # ------------------------------------------------------
+    # -----------------------------------------
+    # 初歩的な評価関数 (SCORE_MAP)
+    # -----------------------------------------
+    SCORE_MAP = [
+        [100, -20,  10,  10, -20, 100],
+        [-20, -50,   1,   1, -50, -20],
+        [ 10,   1,   5,   5,   1,  10],
+        [ 10,   1,   5,   5,   1,  10],
+        [-20, -50,   1,   1, -50, -20],
+        [100, -20,  10,  10, -20, 100],
+    ]
+
     def evaluate_board(self, board, stone):
-        """単純に SCORE_MAP に基づいてスコアを計算する例"""
+        """シンプルに SCORE_MAP に基づく評価"""
         score = 0
         opponent = 3 - stone
         for y in range(len(board)):
             for x in range(len(board[0])):
                 if board[y][x] == stone:
-                    score += SCORE_MAP[y][x]
+                    score += self.SCORE_MAP[y][x]
                 elif board[y][x] == opponent:
-                    score -= SCORE_MAP[y][x]
+                    score -= self.SCORE_MAP[y][x]
         return score
 
-    # ------------------------------------------------------
-    # ミニマックス＋αβ法 (再帰)
-    # ------------------------------------------------------
-    def minimax(self, board, stone, depth, maximizing, alpha, beta):
-        """
-        depth: 検索の深さ
-        maximizing: True なら自分の最大化フェーズ、Falseなら相手の最大化フェーズ
-        alpha, beta: α-βカットの値
-        """
+    # -----------------------------------------
+    # ミニマックス(αβ法)
+    # -----------------------------------------
+    def minimax(self, board, stone, depth, alpha, beta, maximizing):
         if depth == 0:
-            # 評価値を返す
             return self.evaluate_board(board, stone)
 
         moves = []
@@ -128,17 +136,18 @@ class macaronAI:
                 if self.can_place_x_y(board, stone, x, y):
                     moves.append((x, y))
 
-        # 置ける手がない場合はパス
+        # パス判定（置ける場所がない）
         if not moves:
-            # 相手に交代して次の深さを検索
-            return self.minimax(board, 3 - stone, depth - 1, not maximizing, alpha, beta)
+            # 相手に手番を渡して、深さを1減らす
+            # ただし、パス続きになった場合は同じ評価で終了
+            return self.minimax(board, 3 - stone, depth - 1, alpha, beta, not maximizing)
 
         if maximizing:
             value = -math.inf
             for (x, y) in moves:
                 new_board = self.simulate_board(board, stone, x, y)
-                # 相手の番で minimax 再帰
-                score = self.minimax(new_board, 3 - stone, depth - 1, False, alpha, beta)
+                # 相手ターンを評価
+                score = self.minimax(new_board, 3 - stone, depth - 1, alpha, beta, False)
                 value = max(value, score)
                 alpha = max(alpha, value)
                 if alpha >= beta:
@@ -148,44 +157,46 @@ class macaronAI:
             value = math.inf
             for (x, y) in moves:
                 new_board = self.simulate_board(board, stone, x, y)
-                # 相手の番で minimax 再帰
-                score = self.minimax(new_board, 3 - stone, depth - 1, True, alpha, beta)
+                # 相手ターンを評価
+                score = self.minimax(new_board, 3 - stone, depth - 1, alpha, beta, True)
                 value = min(value, score)
                 beta = min(beta, value)
                 if alpha >= beta:
                     break
             return value
 
-    # ------------------------------------------------------
-    # 実際に石を置く手を決定するメソッド
-    # ------------------------------------------------------
+    # -----------------------------------------
+    # 実際に石を置く手を決定する
+    # -----------------------------------------
     def place(self, board, stone):
-        """思考ルーチンの入口。ここで最終的に (x, y) を返す。"""
-        # 置ける手がない場合はパス
+        """思考ルーチン入口。ここで(x, y)を返す。"""
+        # 置ける手がないならパス
         if not self.can_place(board, stone):
             print("No valid moves available. Passing turn.")
             return
 
         best_score = -math.inf
         best_move = None
-        depth = 3  # 探索の深さ（例として 3 に設定）
+        depth = 3  # 探索深さ(適宜変更)
 
-        # すべての置ける手を試して最大スコアを選ぶ
         for y in range(len(board)):
             for x in range(len(board[0])):
                 if self.can_place_x_y(board, stone, x, y):
+                    # その手を打った場合の盤面
                     new_board = self.simulate_board(board, stone, x, y)
-                    # minimax で相手ターンを評価
-                    score = self.minimax(new_board, 3 - stone, depth - 1,
-                                         maximizing=False,
-                                         alpha=-math.inf, beta=math.inf)
+                    # 相手番として評価
+                    score = self.minimax(
+                        new_board,
+                        stone = 3 - stone,
+                        depth = depth - 1,
+                        alpha = -math.inf,
+                        beta  = math.inf,
+                        maximizing = False
+                    )
                     if score > best_score:
                         best_score = score
                         best_move = (x, y)
 
-        if best_move is None:
-            # 理論上起きにくいが、一応置ける手がない(二重パス)ならパス
-            return
-
         return best_move
+
 
