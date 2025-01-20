@@ -7,7 +7,7 @@ WHITE = 2
 class macaronAI:
     def __init__(self):
         # 反復深化の最大深度（必要に応じて調整）
-        self.MAX_DEPTH = 8
+        self.MAX_DEPTH = 12
         # 反復深化にかける最大思考時間 [秒]
         self.TIME_LIMIT = 5.0
 
